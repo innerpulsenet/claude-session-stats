@@ -1,0 +1,6 @@
+{
+  "name": "innerpulsenet",
+  "description": "Claude Code mods by innerpulsenet",
+  "owner": { "name": "innerpulsenet" },
+  "plugins": [{ "name": "session-stats", "source": "./" }]
+}
