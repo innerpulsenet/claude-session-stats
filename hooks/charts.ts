@@ -3,7 +3,8 @@
 // isolated from the app, so colors live here, dark by default and paper under a light color scheme.
 // The drawings carry no text: labels stay in Text beside them, so nothing ever sits on a mark.
 
-export type Tone = 'ok' | 'warn' | 'bad'
+// 'calm' is a healthy level: a quiet gray, so color in the band always means something to look at
+export type Tone = 'calm' | 'ok' | 'warn' | 'bad'
 
 const f = (n: number) => (Math.round(n * 10) / 10).toString()
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
@@ -19,6 +20,8 @@ const STYLE = `<style>
 .line{stroke:#b9bdc3;fill:none}.area{fill:#b9bdc3;fill-opacity:.08}.dot{fill:#f43a2a}
 .c0{fill:#e3e6e9}.c1{fill:#9aa3b0}.c2{fill:#ff7a59}.c3{fill:#ffb347}.c4{fill:#6c7584}.c5{fill:#b38cff}.c6{fill:#7dd9a3}.c7{fill:#4b5361}
 .g-ok{stop-color:#7dd9a3}.g-warn{stop-color:#ffb347}.g-bad{stop-color:#f43a2a}.ring{stroke:#1f2329}
+.g-lo{stop-color:#7d97d8}.g-mid{stop-color:#b08ad8}.g-hi{stop-color:#ff7a59}.calm{fill:#5b6470}
+.mk{fill:#e3e6e9;fill-opacity:.22}.mk-lit{fill:#ffd9c2;opacity:0}
 .sl{fill:none;stroke:url(#sg)}.sa{fill:url(#sg);fill-opacity:.14}.se{fill:url(#sg)}
 .pulse{animation:p 1.6s ease-in-out infinite}@keyframes p{50%{opacity:.35}}
 @media (prefers-color-scheme:light){
@@ -28,8 +31,11 @@ const STYLE = `<style>
 .tick{stroke:#14171c}.ghost{stroke:#14171c}.miss{stroke:#d12c1e}.base{stroke:#14171c;stroke-opacity:.15}
 .line{stroke:#454b56}.area{fill:#454b56}.dot{fill:#d12c1e}
 .g-ok{stop-color:#0d6d3d}.g-warn{stop-color:#c77a1a}.g-bad{stop-color:#d12c1e}.ring{stroke:#f4f1ec}
+.g-lo{stop-color:#34508f}.g-mid{stop-color:#6a3f9a}.g-hi{stop-color:#a83a18}.calm{fill:#a59d90}
+.mk{fill:#14171c;fill-opacity:.25}.mk-lit{fill:#d12c1e}
 .c0{fill:#14171c}.c1{fill:#5d6573}.c2{fill:#a83a18}.c3{fill:#c77a1a}.c4{fill:#8a8f99}.c5{fill:#6a3fd0}.c6{fill:#0d6d3d}.c7{fill:#c9c1b4}}
-@media (prefers-reduced-motion:reduce){.pulse{animation:none}}
+@keyframes mkp{0%{opacity:0}13%{opacity:.95}26%{opacity:0}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.pulse,.mk-lit{animation:none}}
 </style>`
 
 const svg = (w: number, h: number, body: string) =>
@@ -81,8 +87,9 @@ export function meter(o: MeterOpts): string {
 
 export type TurnBar = { read: number; write: number; fresh: number; output: number; isMiss: boolean; hint: string }
 
-// The band's sparkline: the last turns' prompt sizes as one thin line over a faint fill, shaded green
-// at the low end of its range to red at the high, a miss as a ringed red dot, the running turn's end pulsing. Each turn keeps an invisible slot for its tooltip.
+// The band's sparkline: the last turns' prompt sizes as one thin line over a faint fill, shaded in
+// the innerpulse theme's own scale, inky blue at the low end of its range through plum to ember at
+// the high, a miss as a ringed red dot, the running turn's end pulsing. Each turn keeps an invisible slot for its tooltip.
 export function spark(turns: TurnBar[], isLive: boolean, width = 72, height = 16, hint?: string): string {
   if (turns.length === 0) return svg(width, height, title(hint))
   const sizes = turns.map(t => t.read + t.write + t.fresh)
@@ -111,10 +118,10 @@ export function spark(turns: TurnBar[], isLive: boolean, width = 72, height = 16
       return `<g>${title(t.hint)}<rect x="${f(i * slot)}" y="0" width="${f(slot)}" height="${height}" fill="transparent"/>${dot}</g>`
     })
     .join('')
-  // Top of the range red, the middle amber, the bottom green, in the drawing's own coordinates
+  // Top of the range ember, the middle plum, the bottom blue, in the drawing's own coordinates
   const grad =
     `<defs><linearGradient id="sg" gradientUnits="userSpaceOnUse" x1="0" y1="${pad}" x2="0" y2="${height - pad}">` +
-    `<stop class="g-bad" offset="0"/><stop class="g-warn" offset=".5"/><stop class="g-ok" offset="1"/></linearGradient></defs>`
+    `<stop class="g-hi" offset="0"/><stop class="g-mid" offset=".5"/><stop class="g-lo" offset="1"/></linearGradient></defs>`
   return svg(width, height, `${grad}${title(hint)}<rect width="${width}" height="${height}" fill="transparent"/>${area}${line}${marks}`)
 }
 
@@ -201,4 +208,23 @@ export function spendBar(value: number, max: number, isSelf: boolean, width = 96
 // A small square of a series' color, for a Text legend beside a chart
 export function swatch(cls: string, size = 8): string {
   return svg(size, size, `<rect class="${cls}" x="0" y="0" width="${size}" height="${size}" rx="1.5"/>`)
+}
+
+// The innerpulse mark's six bars (from the brand kit), in a -110..110 box
+const MARK = [{"x": -103, "y": -23, "w": 22, "h": 46, "rx": 4}, {"x": -66.2, "y": -93.22, "w": 22, "h": 186.44, "rx": 4}, {"x": -29.4, "y": -62.83, "w": 22, "h": 125.67, "rx": 4}, {"x": 7.4, "y": -44.34, "w": 22, "h": 88.67, "rx": 4}, {"x": 44.2, "y": -67.13, "w": 22, "h": 134.27, "rx": 4}, {"x": 81, "y": -23, "w": 22, "h": 46, "rx": 4}]
+
+// The band's live mark: the six bars, dim and still between turns; while a turn runs, light passes
+// through them in turn, as on the innerpulse theme's working glyph. `phaseMs` (the time now) keeps
+// the light where it was when the band redraws mid-turn.
+export function liveMark(isLive: boolean, phaseMs: number, size = 14): string {
+  const period = 1200
+  const lit = isLive
+    ? MARK.map((_, i) => `.l${i}{animation:mkp ${period}ms ease-in-out ${Math.round(i * 60 - (phaseMs % period))}ms infinite}`).join('')
+    : ''
+  const bars = MARK.map(
+    (b, i) =>
+      `<rect class="mk" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${b.rx}"/>` +
+      (isLive ? `<rect class="mk-lit l${i}" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${b.rx}"/>` : ''),
+  ).join('')
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="-110 -110 220 220">${STYLE.replace('</style>', `${lit}</style>`)}${bars}</svg>`
 }

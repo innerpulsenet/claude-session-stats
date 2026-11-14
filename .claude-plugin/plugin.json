@@ -1,6 +1,6 @@
 {
   "name": "session-stats",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A band above the prompt with this session's token, cache, cost, context and rate-limit usage",
   "types": "./types/index.d.ts"
 }

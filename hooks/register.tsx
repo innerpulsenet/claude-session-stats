@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelUsage, Register, RenderChildren, SessionRateLimit } from 'claude-code'
 
-import { meter, spark, stack, swatch, contextLine, spendBar, turnChart } from './charts'
+import { contextLine, liveMark, meter, spark, spendBar, stack, swatch, turnChart } from './charts'
 import type { MeterOpts, Tone, TurnBar } from './charts'
 import type { Category, Ledger, Limit, Measure, Pace, Peer, Tokens, Totals, TurnRecord } from '../types'
 
@@ -513,7 +513,7 @@ export const register: Register = on => {
       const quota = (key: string, name: string, m: MeterOpts, alt: string, figure: string, rest: string, color: string | undefined) => (
         <Box key={key} flexDirection="row" alignItems="center" columnGap={1}>
           <Text dimColor>{name}</Text>
-          {Pic(meter({ ...m, tone: toneOf(color) ?? 'ok', width: 40, height: 8 }), alt)}
+          {Pic(meter({ ...m, tone: toneOf(color) ?? 'calm', width: 40, height: 8 }), alt)}
           <Text tabular color={color}>
             {figure}
             {rest ? <Text dimColor={color === undefined}> {rest}</Text> : null}
@@ -524,6 +524,7 @@ export const register: Register = on => {
         [
           'turns',
           <Box key="turns" flexDirection="row" alignItems="center" columnGap={1}>
+            {Pic(liveMark(live !== null, now), live !== null ? 'Claude is working' : 'Idle')}
             {Pic(
               spark(recent, isLive, 60, 14, `This session: ${fmt(promptOf(all))} in · ${fmt(all.output)} out over ${t.mainTurns} turns`),
               `Prompt size of the last ${recent.length} turns${t.misses > 0 ? ', cache misses in red' : ''}; this session ${fmt(promptOf(all))} in, ${fmt(all.output)} out`,
@@ -727,7 +728,7 @@ export const register: Register = on => {
                   <Chart
                     source={meter({
                       value: l.percentUsed,
-                      tone: toneOf(color) ?? 'ok',
+                      tone: toneOf(color) ?? 'calm',
                       share,
                       ghost: isEarly ? 100 : pace?.atReset,
                       width: Math.min(px, 420),

@@ -1,12 +1,13 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { EngineInterface, On } from 'claude-code'
+import type { On } from 'claude-code'
+import type { Engine } from 'claude-code/testing'
 
 const SITE = { scroll: { offset: 0, bodyRows: 40 }, view: {} } as const
 
 const BAND = {
   plugin: 'session-stats',
   component: 'AbovePrompt',
-  props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 240, ...SITE },
+  props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 20, bodyColumns: 240, ...SITE },
 } as const
 
 const PANE = {
@@ -53,7 +54,7 @@ const engine = (on: On, now: () => number) => {
             }
           : {}),
       },
-    },
+    } as never,
   }))
   on('ui.toast', (_, e) => (toasts.push(e.text), { value: undefined }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
@@ -64,7 +65,7 @@ const engine = (on: On, now: () => number) => {
   return { world, usage, toasts, now }
 }
 
-const step = async ($: EngineInterface) => {
+const step = async ($: Engine) => {
   const s = $.turn.step({ turnId: "t", index: 0, model: "claude-opus-5-5", messageCount: 3 })
   for await (const _ of s);
   return s.result
@@ -149,7 +150,10 @@ test('steps add up, a cold cache is caught, and the band shows the week share', 
     // The graphical surfaces get meters and a sparkline; the terminal stays text
     const bandSvgs = await ui.findAll({ type: 'Svg' })
     if (surface === 'desktop') {
-      expect(bandSvgs.length).toBe(3)
+      // The live mark, the sparkline and the two limit meters
+      expect(bandSvgs.length).toBe(4)
+      // A healthy limit's meter is a quiet gray, not green
+      expect(bandSvgs.some(el => String(el.props.source).includes('class="calm"'))).toBe(true)
       // Each drawing keeps its own small size rather than stretching to the slot
       expect(bandSvgs.every(el => Number(el.props.width) <= 60 && Number(el.props.height) <= 14)).toBe(true)
       // Hairlines part the groups: tokens | cache | cost | ctx | 5h | week | buttons
@@ -183,7 +187,11 @@ test('steps add up, a cold cache is caught, and the band shows the week share', 
   // Idle, the graphical band leaves the session totals to the sparkline's tooltip
   const idle = await $.ui.mount({ ...BAND, surface: 'desktop' })
   expect(await idle.find({ type: 'Text', text: / in · / })).toBeUndefined()
-  const sparkAlt = String((await idle.findAll({ type: 'Svg' }))[0]?.props.alt)
+  const idleSvgs = await idle.findAll({ type: 'Svg' })
+  // Between turns the mark sits dim and still
+  expect(String(idleSvgs[0]?.props.alt)).toBe('Idle')
+  expect(String(idleSvgs[0]?.props.source)).not.toContain('class="mk-lit')
+  const sparkAlt = String(idleSvgs[1]?.props.alt)
   expect(sparkAlt).toContain('this session 128k in, 3.0k out')
   // A week on pace to fill early says when, in place of its reset
   expect((await idle.find({ type: 'Text', text: /\(\+/ }))?.text).toContain('→ 100% in')
@@ -196,5 +204,9 @@ test('steps add up, a cold cache is caught, and the band shows the week share', 
   await clock.advance(42_000)
   const working = await $.ui.mount({ ...BAND, surface: 'desktop', props: { ...BAND.props, isWorking: true } })
   expect((await working.find({ type: 'Text', text: /^turn / }))?.text).toBe('turn 0:42 · 46k in · 1.0k out')
+  // While it runs, light passes through the mark
+  const mark = (await working.findAll({ type: 'Svg' }))[0]
+  expect(String(mark?.props.alt)).toBe('Claude is working')
+  expect(String(mark?.props.source)).toContain('class="mk-lit')
   await working.unmount()
 })
