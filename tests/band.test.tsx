@@ -6,7 +6,7 @@ const SITE = { scroll: { offset: 0, bodyRows: 40 }, view: {} } as const
 const BAND = {
   plugin: 'session-stats',
   component: 'AbovePrompt',
-  props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 200, ...SITE },
+  props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 240, ...SITE },
 } as const
 
 const PANE = {
@@ -26,7 +26,10 @@ const engine = (on: On, now: () => number) => {
   const usage = () => ({
     startedAt: T0,
     context: { tokens: world.context, window: 200_000, percent: (world.context / 200_000) * 100 },
-    rateLimits: [{ kind: 'seven_day', percentUsed: world.week, resetsAt: RESET }],
+    rateLimits: [
+      { kind: 'five_hour', percentUsed: 20, resetsAt: new Date(T0 + 5 * HOUR).toISOString() },
+      { kind: 'seven_day', percentUsed: world.week, resetsAt: RESET },
+    ],
     cost: { usd: world.cost },
   })
   const toasts: string[] = []
@@ -133,15 +136,65 @@ test('steps add up, a cold cache is caught, and the band shows the week share', 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
     expect((await ui.find({ type: 'Text', text: /cache/ }))?.text).toContain('⚠ miss')
-    expect((await ui.find({ type: 'Text', text: /week/ }))?.text).toContain('week 44% (+2.0%)')
-    expect((await ui.find({ type: 'Text', text: /ctx/ }))?.text).toContain('compacts ~')
+    expect((await ui.find({ type: 'Text', text: /\(\+/ }))?.text).toContain(surface === 'desktop' ? '(+2.0%)' : 'week 44% (+2.0%)')
+    expect(await ui.find({ type: 'Text', text: /compacts ~/ })).toBeDefined()
+    // The quiet 5-hour window: always on the graphical band, only from 50% on the text band
+    const fiveHour = await ui.find({ type: 'Text', text: /resets 1h50/ })
+    if (surface === 'desktop') {
+      expect(fiveHour?.text).toContain('resets 1h50')
+      // Each quota reads name, meter, percentage, in the band's own text
+      expect(await ui.find({ type: 'Text', text: /^5h$/ })).toBeDefined()
+      expect((await ui.find({ type: 'Text', text: /^20%/ }))?.text).toContain('resets 1h50')
+    } else expect(fiveHour).toBeUndefined()
+    // The graphical surfaces get meters and a sparkline; the terminal stays text
+    const bandSvgs = await ui.findAll({ type: 'Svg' })
+    if (surface === 'desktop') {
+      expect(bandSvgs.length).toBe(3)
+      // Each drawing keeps its own small size rather than stretching to the slot
+      expect(bandSvgs.every(el => Number(el.props.width) <= 60 && Number(el.props.height) <= 14)).toBe(true)
+      // Hairlines part the groups: tokens | cache | cost | ctx | 5h | week | buttons
+      expect((await ui.findAll({ type: 'Text', text: /^│$/ })).length).toBe(6)
+    } else expect(bandSvgs.length).toBe(0)
     await ui.unmount()
+
+    if (surface === 'desktop') {
+      // A narrow column drops the extra words so the band stays on one line
+      const narrow = await $.ui.mount({ ...BAND, surface, props: { ...BAND.props, bodyColumns: 60 } })
+      expect(await narrow.find({ type: 'Text', text: /compacts/ })).toBeUndefined()
+      // The 5-hour window stays however narrow, under 50% included
+      expect(await narrow.find({ type: 'Text', text: /^5h$/ })).toBeDefined()
+      expect((await narrow.find({ type: 'Text', text: /\(\+/ }))?.text).toContain('(+2.0%)')
+      await narrow.unmount()
+    }
 
     const pane = await $.ui.mount({ ...PANE, surface })
     expect(await pane.find({ type: 'Text', text: /cache misses 1/ })).toBeDefined()
     expect(await pane.find({ type: 'Text', text: /System tools/ })).toBeDefined()
     expect(await pane.find({ type: 'Text', text: /other-project/ })).toBeDefined()
     expect(await pane.find({ type: 'Text', text: /my-app/ })).toBeDefined()
+    const alts = (await pane.findAll({ type: 'Svg' })).map(el => String((el.props as { alt?: string }).alt ?? ''))
+    if (surface === 'desktop') {
+      expect(alts.some(a => a.startsWith('Prompt and output tokens of the last 2 turns, cache misses'))).toBe(true)
+      expect(alts.some(a => a.startsWith('What fills the context: Messages 30k, System tools 15k'))).toBe(true)
+      expect(alts.some(a => a.startsWith('week limit 44% used'))).toBe(true)
+    } else expect(alts).toEqual([])
     await pane.unmount()
   }
+  // Idle, the graphical band leaves the session totals to the sparkline's tooltip
+  const idle = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await idle.find({ type: 'Text', text: / in · / })).toBeUndefined()
+  const sparkAlt = String((await idle.findAll({ type: 'Svg' }))[0]?.props.alt)
+  expect(sparkAlt).toContain('this session 128k in, 3.0k out')
+  // A week on pace to fill early says when, in place of its reset
+  expect((await idle.find({ type: 'Text', text: /\(\+/ }))?.text).toContain('→ 100% in')
+  await idle.unmount()
+
+  // While a turn runs, the band shows how long it has been going and its tokens so far
+  await $.prompt.submit({ text: 'more' } as never)
+  next = { read: 45_000, write: 500 }
+  await step($)
+  await clock.advance(42_000)
+  const working = await $.ui.mount({ ...BAND, surface: 'desktop', props: { ...BAND.props, isWorking: true } })
+  expect((await working.find({ type: 'Text', text: /^turn / }))?.text).toBe('turn 0:42 · 46k in · 1.0k out')
+  await working.unmount()
 })

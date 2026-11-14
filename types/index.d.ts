@@ -29,6 +29,8 @@ export type Totals = {
   turns: TurnRecord[]
   // the running turn's requests so far; null between turns
   live: Tokens | null
+  // when the running turn was submitted; null or absent between turns
+  liveAt?: number | null
   // whether the running turn has had a miss yet
   isLiveMiss: boolean
   // when the main thread's last response arrived, to tell an expired cache
@@ -43,7 +45,7 @@ export type Totals = {
 
 export type Limit = { kind: string; percentUsed: number; resetsAt?: string }
 
-export type Category = { name: string; tokens: number }
+export type Category = { name: string; tokens: number; kind?: string }
 
 export type Measure = {
   contextTokens?: number
@@ -83,6 +85,8 @@ declare module 'claude-code' {
       peers: Peer[]
       paces: Pace[]
       isHidden: boolean
+      // bumped every few seconds while a turn runs, so the band's elapsed time redraws
+      tick: number
     }
   }
 }
